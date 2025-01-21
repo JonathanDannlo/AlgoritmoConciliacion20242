@@ -213,9 +213,23 @@ def procesadorEstado(df):
 
 def eliminadorRegistros(df, refDu):
   df = df[~df['Documento'].isin(refDu)]
-  df.loc[df['Documento'] == 10885015, ['Pago4', 'ESTADO_FINAL', 'FONDO_FINAL']] = [143000, 'Beneficiario', 'FSE']
+  df.loc[df['Documento'] == 10885015, ['Pago4', 'ESTADO_FINAL', 'FONDO_FINAL','ESTADO_BENEFICIOFINAL']] = [143000, 'Beneficiario', 'FSE','PAGO FSE TOTAL']
   df.loc[df['ESTADO_FINAL'] == 'Duplicado', ['ESTADO_FINAL', 'FONDO_FINAL']] = ['Excluido', 'Estudiante']
   return df
+
+def validadorFSE(df):
+    required_columns = ['Pago1', 'Pago2', 'Pago3', 'Pago4', 'ESTADO_FINAL']
+    for col in required_columns:
+        if col not in df.columns:
+            raise ValueError(f"La columna requerida '{col}' no está presente en el DataFrame.")
+    for col in ['Pago1', 'Pago2', 'Pago3', 'Pago4','MERITO']:
+        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+    df['Pago FSE'] = df.apply(
+        lambda row: row['Pago1'] + row['Pago2'] + row['Pago3'] + row['Pago4']
+        if row['ESTADO_FINAL'] == 'Beneficiario' else 0, axis=1)
+    df['MeritoFSE'] = df.apply(
+        lambda row: row['MERITO'] if row['ESTADO_FINAL'] == 'Beneficiario' else None, axis=1)
+    return df
 
 def cargadorDF(outputPath, dfs, nombresHojas, engine='xlsxwriter'):
     if not isinstance(dfs, list) or not isinstance(nombresHojas, list):
@@ -246,8 +260,9 @@ interpoladorPiamConciliacion = interpoladorPiamConciliacion(procesadorIdSnies,me
 piam = calcular_matricula(interpoladorPiamConciliacion)
 piam20242 = procesadorEstado(piam)
 piam20242f = eliminadorRegistros(piam20242,refDuplicados)
+piam20242fi = validadorFSE(piam20242f)
 
 #Carga
-cargadorDF(outputPathXlsx,[piam20242f],['piam20242f'])
+cargadorDF(outputPathXlsx,[piam20242fi],['piam20242fi'])
 
 print("Los resultados han sido guardados en el documento y archivo Excel.")
