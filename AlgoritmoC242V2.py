@@ -8,6 +8,7 @@ filePathDarca = '/content/Darca_Conciliacion2024.xlsx'
 filePathSq = '/content/SqEnero13_2024_2.xlsx'
 filePathMen261224 = '/content/Reporte_general__Caracterizacion__novedades_y_requisitos_politica_de_gratuidad__para_las_IES__26_12_2024_cia.xlsx'
 filePathAudotira = '/content/AuditoriaConciliacionPiam20242.xlsx'
+filePathPago3 = '/content/PAGO 3 POLITICA DE GRATUIDAD PERIODO 2024-2 OBSERVACIONES.xlsx'
 outputPathXlsx = '/content/AuditoriaPiam20242Darca.xlsx'
 
 columnasDfMen = ['ID-SNIES','PERIODO_APROBACION','FONDO_ORIGEN','CRITERIO_NO_ACEPTACION','CRITERIO_NO_RENOVACION','GRADO_PREVIO',
@@ -231,6 +232,38 @@ def validadorFSE(df):
         lambda row: row['MERITO'] if row['ESTADO_FINAL'] == 'Beneficiario' else None, axis=1)
     return df
 
+def generadorMarcaje(df):
+    columnasFiltradas = ['CODIGO', 'ESTADO_FINAL', 'FONDO_FINAL', 'TOTAL_PERIODOS_APROBADOS', 'PERIODOS_FINANCIADOS']
+    dFiltrado = df[columnasFiltradas].copy()
+    dFiltrado['CODIGO'] = dFiltrado['CODIGO'].apply(lambda x: f"{x:.0f}")
+    dFiltrado['ESTADO_FINAL'] = dFiltrado['ESTADO_FINAL'].replace({
+        'Beneficiario': 'B',
+        'Excluido': 'E',
+        'Potencial Excluido': 'PE'
+    })
+    dFiltrado.loc[dFiltrado['ESTADO_FINAL'] == 'PE', ['TOTAL_PERIODOS_APROBADOS', 'PERIODOS_FINANCIADOS']] = 0
+    dFiltrado.loc[dFiltrado['ESTADO_FINAL'] == 'E', ['TOTAL_PERIODOS_APROBADOS', 'PERIODOS_FINANCIADOS']] = 0
+    condicion = (dFiltrado['ESTADO_FINAL'] == 'B') & (dFiltrado['TOTAL_PERIODOS_APROBADOS'] - dFiltrado['PERIODOS_FINANCIADOS'] == 0)
+    dFiltrado.loc[condicion, ['TOTAL_PERIODOS_APROBADOS', 'PERIODOS_FINANCIADOS']] = 0
+    dFiltrado.loc[condicion, 'ESTADO_FINAL'] = 'E'
+    dFiltrado.loc[condicion, 'FONDO_FINAL'] = 'Estudiante'
+    return dFiltrado
+
+def actualizarPago3(df1, df2):
+    dfa = pd.merge(df1,
+                   df2[['ID FACTURA', 'APLICADO','SALDO A FAVOR']],
+                   left_on='Id  factura',
+                   right_on='ID FACTURA',
+                   how='left')
+    dfa['Pago3'] = dfa['APLICADO'].combine_first(dfa['Pago3'])
+    dfa['Reintegro'] = dfa['SALDO A FAVOR'].combine_first(dfa['Reintegro'])
+    dfa.loc[dfa['APLICADO'].notna(), 'ESTADO_BENEFICIOFINAL'] = dfa['APLICADO'].apply(
+        lambda x: "PAGO | REINTEGRO" if x != 0 else "REINTEGRO"
+    )
+    dfa.loc[dfa['APLICADO'].notna(), 'Pago FSE'] = dfa['Pago3']
+    dfa = dfa.drop(columns=['ID FACTURA', 'APLICADO','SALDO A FAVOR'])
+    return dfa
+
 def cargadorDF(outputPath, dfs, nombresHojas, engine='xlsxwriter'):
     if not isinstance(dfs, list) or not isinstance(nombresHojas, list):
         raise TypeError("Ambos argumentos, 'dfs' y 'nombresHojas', deben ser listas.")
@@ -250,6 +283,7 @@ darca2024 = cargarArchivosDataframes(filePathDarca,'DARCA20242')
 sq20242 = cargarArchivosDataframes(filePathSq,'sq')
 auditoria = cargarArchivosDataframes(filePathAudotira,'Piam242ECSP')
 men20242 = cargarArchivosDataframes(filePathMen261224,'plantilla_gratuidad_ies')
+dfPago3 = cargarArchivosDataframes(filePathPago3,'PARCIALREINTEGRO')
 
 #Manipulacion
 interpoladorDarcaFacturacionSq = interpoladorDarcaFacturacionSq(darca2024,sq20242)
@@ -261,8 +295,10 @@ piam = calcular_matricula(interpoladorPiamConciliacion)
 piam20242 = procesadorEstado(piam)
 piam20242f = eliminadorRegistros(piam20242,refDuplicados)
 piam20242fi = validadorFSE(piam20242f)
+piam20242fii = actualizarPago3(piam20242fi,dfPago3)
+piamMarcaje = generadorMarcaje(piam20242fii)
 
 #Carga
-cargadorDF(outputPathXlsx,[piam20242fi],['piam20242fi'])
+cargadorDF(outputPathXlsx,[piam20242fii,piamMarcaje],['piam20242fii','piamMarcaje'])
 
 print("Los resultados han sido guardados en el documento y archivo Excel.")
