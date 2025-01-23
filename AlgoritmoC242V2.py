@@ -6,7 +6,7 @@ from openpyxl import load_workbook
 
 filePathDarca = '/content/Darca_Conciliacion2024.xlsx'
 filePathSq = '/content/SqEnero13_2024_2.xlsx'
-filePathSqi = '/content/SqEnero21_2024_2.xlsx'
+filePathSqiii = '/content/SqEnero23_2024_2.xlsx'
 filePathMen261224 = '/content/Reporte_general__Caracterizacion__novedades_y_requisitos_politica_de_gratuidad__para_las_IES__26_12_2024_cia.xlsx'
 filePathAudotira = '/content/AuditoriaConciliacionPiam20242.xlsx'
 filePathPago3 = '/content/PAGO 3 POLITICA DE GRATUIDAD PERIODO 2024-2 OBSERVACIONES.xlsx'
@@ -265,19 +265,24 @@ def actualizarPago3(df1, df2):
     dfa = dfa.drop(columns=['ID FACTURA', 'APLICADO','SALDO A FAVOR'])
     return dfa
 
-def verificadorFinanciero(df1, df2):
-    columnasFacturacion = [
-        'Destino', 'Nombre de Destino', 'Tercero', 'Nombre del Tercero', 'Id  factura',
-        'Tipo de Documento', 'Documento', 'Fecha', 'Valor Factura', 'Valor Ajuste',
-        'Valor Pagado', 'Valor Anulado', 'Saldo', 'Id Integracion', 'Estado Actual',
-        'Periodico Academico', 'Tipo de Financiacion'
-    ]
-    dfs = df1.merge(df2, on='Documento', how='left', suffixes=('', '_new'))
-    for col in columnasFacturacion:
-        if f"{col}_new" in dfs.columns:
-            dfs[col] = dfs[f"{col}_new"].combine_first(dfs[col])
-    dfs = dfs.drop(columns=[f"{col}_new" for col in columnasFacturacion if f"{col}_new" in dfs.columns])
-    return dfs
+def eliminadorColumnas(df):
+    columnasEliminar = [
+        'Destino', 'Nombre de Destino', 'Tercero', 'Nombre del Tercero',
+        'Id factura', 'Tipo de Documento', 'Documento', 'Fecha',
+        'Valor Factura', 'Valor Ajuste', 'Valor Pagado', 'Valor Anulado',
+        'Saldo', 'Id Integracion', 'Estado Actual', 'Periodico Academico',
+        'Tipo de Financiacion','Id  factura']
+    df.drop(columns=[col for col in columnasEliminar if col in df.columns], inplace=True, errors='ignore')
+    return df
+
+def integradorFacturacionFinal(df1,df2):
+  df = pd.merge(
+      df1,
+      df2,
+      left_on='RECIBO',
+      right_on='Documento',
+      how='left')
+  return df
 
 def cargadorDF(outputPath, dfs, nombresHojas, engine='xlsxwriter'):
     if not isinstance(dfs, list) or not isinstance(nombresHojas, list):
@@ -299,7 +304,7 @@ sq20242 = cargarArchivosDataframes(filePathSq,'sq')
 auditoria = cargarArchivosDataframes(filePathAudotira,'Piam242ECSP')
 men20242 = cargarArchivosDataframes(filePathMen261224,'plantilla_gratuidad_ies')
 dfPago3 = cargarArchivosDataframes(filePathPago3,'PARCIALREINTEGRO')
-sq20242i = cargarArchivosDataframes(filePathSqi,'sq')
+sq20242iii = cargarArchivosDataframes(filePathSqiii,'sq')
 
 #Manipulacion
 interpoladorDarcaFacturacionSq = interpoladorDarcaFacturacionSq(darca2024,sq20242)
@@ -312,10 +317,12 @@ piam20242 = procesadorEstado(piam)
 piam20242f = eliminadorRegistros(piam20242,refDuplicados)
 piam20242fi = validadorFSE(piam20242f)
 piam20242fii = actualizarPago3(piam20242fi,dfPago3)
-piam20242fiii = verificadorFinanciero(piam20242fii,sq20242i)
 piamMarcaje = generadorMarcaje(piam20242fii)
+piam20242fiii = eliminadorColumnas(piam20242fii)
+piamfinal = integradorFacturacionFinal(piam20242fiii,sq20242iii)
+
 
 #Carga
-cargadorDF(outputPathXlsx,[piam20242fiii,piamMarcaje],['piam20242fiii','piamMarcaje'])
+cargadorDF(outputPathXlsx,[piamfinal],['piamfinal'])
 
 print("Los resultados han sido guardados en el documento y archivo Excel.")
